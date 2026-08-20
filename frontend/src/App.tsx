@@ -456,7 +456,6 @@ export default function App() {
             addServer={addServer} 
             removeServer={removeServer} 
             updateInfo={updateInfo}
-            checkingUpdate={checkingUpdate}
             updating={updating}
             triggerSystemUpdate={triggerSystemUpdate}
             API_URL={API_URL} 
@@ -1249,7 +1248,6 @@ function SettingsView({
   addServer, 
   removeServer, 
   updateInfo, 
-  checkingUpdate, 
   updating, 
   triggerSystemUpdate, 
   API_URL, 
