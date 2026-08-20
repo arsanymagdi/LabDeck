@@ -461,7 +461,7 @@ export default function App() {
         {activeTab === 'services' && <Services API_URL={API_URL} authenticated={authenticated} />}
         {activeTab === 'storage' && <Storage API_URL={API_URL} authenticated={authenticated} disks={systemData?.disks || []} refreshDisks={fetchSystem} />}
         {activeTab === 'network' && <NetworkView system={systemData} testConnection={testConnection} testingConnection={testingConnection} />}
-        {activeTab === 'terminal' && <TerminalView />}
+        {activeTab === 'terminal' && <TerminalView serverUrl={apiBase} />}
         {activeTab === 'logs' && <Logs events={events} exportLogs={exportLogs} />}
         {activeTab === 'automations' && <AutomationsView postLog={postLog} />}
         {activeTab === 'settings' && (
@@ -1196,7 +1196,7 @@ function Storage({ API_URL, authenticated, disks, refreshDisks }: any) {
 }
 function NetworkView({ system, testConnection, testingConnection }: any) { return <><PageHeader eyebrow="Connectivity" title="Network overview" description="Connection health and traffic across your primary interface." action={<button onClick={testConnection} disabled={testingConnection} className="outline-button"><RefreshCw className={testingConnection ? 'spinning' : ''} size={16} /> {testingConnection ? 'Testing...' : 'Test connection'}</button>} /><div className="network-cards"><Metric label="Download" value={byte(system?.network?.bytes_recv)} sub="Received since boot" color="#5c8dff" icon={<ArrowDownRight size={18} />} data={58} /><Metric label="Upload" value={byte(system?.network?.bytes_sent)} sub="Sent since boot" color="#a884ff" icon={<ArrowUpRight size={18} />} /><div className="metric-card"><div className="metric-label"><span>Connection</span><i><Network size={18} /></i></div><div className="connection"><span className="status"><i /> Connected</span><b>eth0</b></div><p>Private network · protected</p></div></div><div className="panel interfaces"><PanelTitle title="Network interfaces" subtitle="Configured connections on this host" /><div className="interface-row"><span className="network-icon"><Network size={19} /></span><span><b>Ethernet · eth0</b><small>192.168.1.4 · DHCP</small></span><span className="status"><i /> Connected</span><ChevronRight size={18} /></div></div></> }
 
-function TerminalView() {
+function TerminalView({ serverUrl }: { serverUrl: string }) {
   const [isActive, setIsActive] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
 
@@ -1227,7 +1227,7 @@ function TerminalView() {
               <span>admin@homelab-node: ~ (active)</span>
             </div>
             <iframe
-              src="/ttyd/"
+              src={`${serverUrl}/ttyd/`}
               title="Terminal"
               className="terminal-iframe"
               allow="clipboard-read; clipboard-write"
