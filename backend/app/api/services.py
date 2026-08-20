@@ -39,15 +39,39 @@ def save_services(services: list[dict]):
     with open(SERVICES_FILE, "w") as f:
         json.dump(services, f, indent=2)
 
-def is_port_open(port: int) -> bool:
+def get_host_ip() -> str:
     try:
-        # Check connection on localhost
+        with open("/proc/net/route", "r") as f:
+            for line in f:
+                fields = line.strip().split()
+                if len(fields) >= 3 and fields[1] == "00000000":
+                    gateway_hex = fields[2]
+                    bytes_list = [int(gateway_hex[i:i+2], 16) for i in range(0, 8, 2)]
+                    bytes_list.reverse()
+                    return ".".join(map(str, bytes_list))
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+def is_port_open(port: int) -> bool:
+    host_ip = get_host_ip()
+    try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.5)
-            s.connect(("127.0.0.1", port))
+            s.connect((host_ip, port))
             return True
     except Exception:
-        return False
+        pass
+    
+    if host_ip != "127.0.0.1":
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                s.connect(("127.0.0.1", port))
+                return True
+        except Exception:
+            pass
+    return False
 
 @router.get("")
 def get_services(current_user: str = Depends(get_current_user)):

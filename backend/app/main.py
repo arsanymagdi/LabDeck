@@ -1,11 +1,31 @@
 import asyncio
 import json
+import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import auth, system, docker, services
 from app.api.system import get_system_stats
+from app.core.metrics_db import init_db, save_metric, cleanup_metrics
 
 app = FastAPI(title="HomelabOS Core API", version="0.1")
+
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    asyncio.create_task(collect_metrics_loop())
+
+async def collect_metrics_loop():
+    psutil.cpu_percent(interval=None)
+    while True:
+        try:
+            cpu = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory().percent
+            save_metric(cpu, mem)
+            cleanup_metrics()
+        except Exception as e:
+            print(f"Error in collect_metrics_loop: {e}")
+        await asyncio.sleep(60)
+
 
 # Allow CORS for React development server
 app.add_middleware(
