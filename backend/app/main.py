@@ -2,7 +2,7 @@ import asyncio
 import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, system, docker
+from app.api import auth, system, docker, services
 from app.api.system import get_system_stats
 
 app = FastAPI(title="HomelabOS Core API", version="0.1")
@@ -20,6 +20,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(system.router)
 app.include_router(docker.router)
+app.include_router(services.router)
 
 # WebSocket connection manager
 class ConnectionManager:
