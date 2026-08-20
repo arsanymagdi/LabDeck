@@ -13,6 +13,14 @@ chmod +x install.sh
 
 The installer creates a local `.env`, generates a JWT secret, optionally collects Firebase values, and starts the stack. Open `http://SERVER_IP:8080` afterwards. Change `DASHBOARD_PASSWORD` in `.env` before exposing the dashboard.
 
+## File storage
+
+The Storage page can upload, download, and delete files from your browser. Files are kept on the host at `/home/arsani/homelab/data/storage/` and mounted into the API container at `/storage`. Create it before starting the stack if needed:
+
+```bash
+mkdir -p /home/arsani/homelab/data/storage
+```
+
 To run the optional ttyd sidecar:
 
 ```bash
