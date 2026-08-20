@@ -3,7 +3,7 @@ import json
 import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, system, docker, services
+from app.api import auth, system, docker, services, storage
 from app.api.system import get_system_stats
 from app.core.metrics_db import init_db, save_metric, cleanup_metrics
 
@@ -64,6 +64,7 @@ app.include_router(auth.router)
 app.include_router(system.router)
 app.include_router(docker.router)
 app.include_router(services.router)
+app.include_router(storage.router)
 
 # WebSocket connection manager
 class ConnectionManager:
