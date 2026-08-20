@@ -1,2 +1,2 @@
 FROM tsl0922/ttyd:latest
-RUN apk add --no-cache util-linux
+RUN apt-get update && apt-get install -y --no-install-recommends util-linux && rm -rf /var/lib/apt/lists/*
