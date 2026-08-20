@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.core.security import get_current_user
 
@@ -10,6 +11,11 @@ from app.core.security import get_current_user
 router = APIRouter(prefix="/api/storage", tags=["storage"])
 STORAGE_ROOT = Path(os.environ.get("STORAGE_PATH", "/storage")).resolve()
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024 * 1024  # 10 GiB
+MAX_TEXT_FILE_SIZE = 2 * 1024 * 1024  # 2 MiB
+
+
+class TextFileUpdate(BaseModel):
+    content: str
 
 
 def storage_path(relative_path: str = "") -> Path:
@@ -87,6 +93,33 @@ async def upload_file(file: UploadFile, directory: str = "", current_user: str =
     finally:
         await file.close()
     return {"name": target.name, "path": str(target.relative_to(STORAGE_ROOT)), "size": total_size}
+
+
+@router.get("/text/{path:path}")
+def read_text_file(path: str, current_user: str = Depends(get_current_user)):
+    target = storage_path(path)
+    if not target.is_file() or target.is_symlink():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.stat().st_size > MAX_TEXT_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Only text files up to 2 MiB can be edited")
+    try:
+        return {"content": target.read_text(encoding="utf-8")}
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=415, detail="This file is not UTF-8 text")
+
+
+@router.put("/text/{path:path}")
+def write_text_file(path: str, update: TextFileUpdate, current_user: str = Depends(get_current_user)):
+    target = storage_path(path)
+    if not target.is_file() or target.is_symlink():
+        raise HTTPException(status_code=404, detail="File not found")
+    encoded = update.content.encode("utf-8")
+    if len(encoded) > MAX_TEXT_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Only text files up to 2 MiB can be edited")
+    temporary = target.with_name(f".{target.name}.editing")
+    temporary.write_bytes(encoded)
+    temporary.replace(target)
+    return {"path": path, "size": len(encoded)}
 
 
 @router.get("/files/{path:path}")
