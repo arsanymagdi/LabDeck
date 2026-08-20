@@ -21,7 +21,6 @@ const navigation = [
   { id: 'network', label: 'Network', icon: Network },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'logs', label: 'Activity log', icon: FileText },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 
@@ -51,6 +50,11 @@ export default function App() {
 
   const [updateInfo, setUpdateInfo] = useState<any>(null);
   const [updating, setUpdating] = useState(false);
+  const [themeMode, setThemeMode] = useState(localStorage.getItem('theme_mode') || 'dark');
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(() => {
+    const saved = Number(localStorage.getItem('refresh_interval') || '10');
+    return [5, 10, 30, 60].includes(saved) ? saved : 10;
+  });
 
   const addServer = (url: string) => {
     if (!url) return;
@@ -110,6 +114,20 @@ export default function App() {
 
   const authenticated = (headers = {}) => ({ ...headers, Authorization: `Bearer ${token}` });
   const logout = () => { localStorage.removeItem('token'); ws.current?.close(); setToken(null); };
+
+  const changeTheme = (mode: string) => {
+    setThemeMode(mode);
+    localStorage.setItem('theme_mode', mode);
+    postLog(`Appearance preferences changed to: ${mode}`);
+  };
+
+  const changeRefreshInterval = (seconds: string) => {
+    const interval = Number(seconds);
+    if (![5, 10, 30, 60].includes(interval)) return;
+    setAutoRefreshInterval(interval);
+    localStorage.setItem('refresh_interval', seconds);
+    postLog(`Auto telemetry polling interval set to: ${seconds}s`);
+  };
 
   const checkSystemUpdate = async () => {
     try {
@@ -266,9 +284,9 @@ export default function App() {
       }
     };
     socket.onerror = fetchSystem;
-    const interval = window.setInterval(() => { fetchSystem(); if (activeTab === 'docker') fetchDocker(); }, 10000);
+    const interval = window.setInterval(() => { fetchSystem(); if (activeTab === 'docker') fetchDocker(); }, autoRefreshInterval * 1000);
     return () => { socket.close(); window.clearInterval(interval); };
-  }, [token, activeTab, serverAddress]);
+  }, [token, activeTab, serverAddress, autoRefreshInterval]);
 
 
 
@@ -378,11 +396,11 @@ export default function App() {
   const containers = dockerData?.containers || [];
   const running = containers.filter((item: any) => item.status === 'running').length;
   const hostname = systemData?.hostname || 'homelab-node';
-  const title = navigation.find(item => item.id === activeTab)?.label || 'Overview';
+  const title = activeTab === 'settings' ? 'Settings' : navigation.find(item => item.id === activeTab)?.label || 'Overview';
 
-  return <div className="app-shell">
+  return <div className={`app-shell theme-${themeMode}`}>
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
-      <div className="sidebar-top"><div className="logo"><div className="brand-mark small"><Command size={19} /></div><span>lab<span>deck</span></span></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X size={19} /></button></div>
+      <div className="sidebar-top"><div className="logo"><div className="brand-mark small"><Command size={19} /></div><span>lab<span>deck</span></span></div><button className="mobile-close" aria-label="Close navigation menu" onClick={() => setMenuOpen(false)}><X size={19} /></button></div>
       <div className="server-switch" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span className="online-dot" />
@@ -423,7 +441,7 @@ export default function App() {
       <nav>{navigation.slice(0, 4).map(item => <NavItem key={item.id} item={item} active={activeTab} select={setActiveTab} close={() => setMenuOpen(false)} />)}</nav>
       <p className="nav-label">Manage</p>
       <nav>{navigation.slice(4).map(item => <NavItem key={item.id} item={item} active={activeTab} select={setActiveTab} close={() => setMenuOpen(false)} />)}</nav>
-      <div className="sidebar-bottom"><button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}><Settings size={18} /> Settings</button><button className="nav-item muted" onClick={logout}><LogOut size={18} /> Sign out</button><div className="user-chip" onClick={() => setActiveTab('settings')} style={{ cursor: 'pointer' }}><div>AD</div><span><b>Admin</b><small>Owner</small></span><MoreHorizontal size={17} /></div></div>
+      <div className="sidebar-bottom"><button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => { setActiveTab('settings'); setMenuOpen(false); }}><Settings size={18} /> Settings</button><button className="nav-item muted" onClick={logout}><LogOut size={18} /> Sign out</button><div className="user-chip" onClick={() => { setActiveTab('settings'); setMenuOpen(false); }} style={{ cursor: 'pointer' }}><div>AD</div><span><b>Admin</b><small>Owner</small></span><MoreHorizontal size={17} /></div></div>
     </aside>
     {menuOpen && <button className="scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />}
     <main className="workspace">
@@ -459,6 +477,10 @@ export default function App() {
             postLog={postLog} 
             testConnection={testConnection} 
             scanDisks={scanDisks} 
+            themeMode={themeMode}
+            onThemeChange={changeTheme}
+            autoRefreshInterval={String(autoRefreshInterval)}
+            onRefreshIntervalChange={changeRefreshInterval}
           />
         )}
       </section>
@@ -1250,7 +1272,11 @@ function SettingsView({
   authenticated, 
   postLog, 
   testConnection, 
-  scanDisks 
+  scanDisks,
+  themeMode,
+  onThemeChange,
+  autoRefreshInterval,
+  onRefreshIntervalChange
 }: any) {
   const [addressInput, setAddressInput] = useState(serverAddress);
   const [newServerUrl, setNewServerUrl] = useState('');
@@ -1259,8 +1285,7 @@ function SettingsView({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
-  const [themeMode, setThemeMode] = useState(localStorage.getItem('theme_mode') || 'dark');
-  const [autoRefreshInterval, setAutoRefreshInterval] = useState(localStorage.getItem('refresh_interval') || '10');
+  useEffect(() => { setAddressInput(serverAddress); }, [serverAddress]);
 
   const handleSaveConnection = (e: FormEvent) => {
     e.preventDefault();
@@ -1306,18 +1331,6 @@ function SettingsView({
     } catch {
       setPasswordError('Error reaching security control endpoint.');
     }
-  };
-
-  const handleToggleTheme = (mode: string) => {
-    setThemeMode(mode);
-    localStorage.setItem('theme_mode', mode);
-    postLog(`Appearance preferences changed to: ${mode}`);
-  };
-
-  const handleRefreshIntervalChange = (val: string) => {
-    setAutoRefreshInterval(val);
-    localStorage.setItem('refresh_interval', val);
-    postLog(`Auto telemetry polling interval set to: ${val}s`);
   };
 
   return (
@@ -1516,7 +1529,7 @@ function SettingsView({
                   type="button"
                   className="outline-button" 
                   style={{ flex: 1, borderColor: themeMode === 'dark' ? 'var(--violet)' : '#383940', color: themeMode === 'dark' ? 'white' : 'var(--muted)' }}
-                  onClick={() => handleToggleTheme('dark')}
+                  onClick={() => onThemeChange('dark')}
                 >
                   Dark Mode
                 </button>
@@ -1524,7 +1537,7 @@ function SettingsView({
                   type="button"
                   className="outline-button" 
                   style={{ flex: 1, borderColor: themeMode === 'light' ? 'var(--violet)' : '#383940', color: themeMode === 'light' ? 'white' : 'var(--muted)' }}
-                  onClick={() => handleToggleTheme('light')}
+                  onClick={() => onThemeChange('light')}
                 >
                   Light Theme
                 </button>
@@ -1542,7 +1555,7 @@ function SettingsView({
                     type="button"
                     className="outline-button" 
                     style={{ flex: 1, padding: '6px', fontSize: '10px', borderColor: autoRefreshInterval === seconds ? 'var(--violet)' : '#383940' }}
-                    onClick={() => handleRefreshIntervalChange(seconds)}
+                    onClick={() => onRefreshIntervalChange(seconds)}
                   >
                     {seconds}s
                   </button>
@@ -1580,4 +1593,3 @@ function SettingsView({
     </>
   );
 }
-
