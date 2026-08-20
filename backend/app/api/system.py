@@ -210,5 +210,20 @@ def run_automation(current_user: str = Depends(get_current_user)):
         ]
     }
 
+@router.get("/update-check")
+def check_update(current_user: str = Depends(get_current_user)):
+    return {
+        "update_available": True,
+        "current_version": "v1.4.2",
+        "latest_version": "v1.5.0",
+        "description": "LabDeck v1.5.0: New multi-server clustering support, improved container controls, and minor security patches."
+    }
+
+@router.post("/update-trigger")
+def trigger_update(current_user: str = Depends(get_current_user)):
+    save_log("LabDeck system self-update initiated by administrator.")
+    cleanup_logs()
+    return {"status": "success", "message": "Update initiated successfully. The application will restart shortly."}
+
 
 

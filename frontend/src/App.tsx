@@ -40,6 +40,38 @@ function Ring({ value, color }: { value: number; color: string }) {
 
 export default function App() {
   const [serverAddress, setServerAddress] = useState<string>(localStorage.getItem('server_address') || '');
+  const [serversList, setServersList] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('servers_list');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [updateInfo, setUpdateInfo] = useState<any>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  const addServer = (url: string) => {
+    if (!url) return;
+    const cleanUrl = url.trim();
+    if (serversList.includes(cleanUrl)) return;
+    const updated = [...serversList, cleanUrl];
+    setServersList(updated);
+    localStorage.setItem('servers_list', JSON.stringify(updated));
+  };
+
+  const removeServer = (url: string) => {
+    const updated = serversList.filter(item => item !== url);
+    setServersList(updated);
+    localStorage.setItem('servers_list', JSON.stringify(updated));
+    if (serverAddress === url) {
+      setServerAddress('');
+      localStorage.removeItem('server_address');
+    }
+  };
+
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -49,7 +81,7 @@ export default function App() {
   const [dockerData, setDockerData] = useState<any>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [events, setEvents] = useState(['HomelabOS control plane is ready', 'Secure websocket connection established', 'System telemetry collector started']);
+  const [events, setEvents] = useState(['LabDeck control plane is ready', 'Secure websocket connection established', 'System telemetry collector started']);
   const ws = useRef<WebSocket | null>(null);
 
   const [cpuHistory, setCpuHistory] = useState<number[]>([]);
@@ -79,6 +111,37 @@ export default function App() {
 
   const authenticated = (headers = {}) => ({ ...headers, Authorization: `Bearer ${token}` });
   const logout = () => { localStorage.removeItem('token'); ws.current?.close(); setToken(null); };
+
+  const checkSystemUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const response = await fetch(`${API_URL}/system/update-check`, { headers: authenticated() });
+      if (response.ok) {
+        setUpdateInfo(await response.json());
+      }
+    } catch (e) {
+      console.error("Error checking system updates", e);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const triggerSystemUpdate = async () => {
+    if (!confirm("Are you sure you want to trigger a self-update? The server will download the latest version and restart.")) return;
+    setUpdating(true);
+    try {
+      const response = await fetch(`${API_URL}/system/update-trigger`, { method: 'POST', headers: authenticated() });
+      if (response.ok) {
+        const data = await response.json();
+        alert(data.message);
+        checkSystemUpdate();
+      }
+    } catch {
+      alert("Error triggering update.");
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -172,6 +235,7 @@ export default function App() {
     fetchHistory();
     fetchLogs();
     fetchSystem(); fetchDocker();
+    checkSystemUpdate();
     const socket = new WebSocket(WS_URL);
     ws.current = socket;
     socket.onmessage = event => {
@@ -300,7 +364,7 @@ export default function App() {
     <div className="login-orb orb-one" /><div className="login-orb orb-two" />
     <main className="login-card">
       <div className="brand-mark"><Command size={26} /></div>
-      <div><p className="eyebrow">HOMELABOS / CONTROL PLANE</p><h1>Everything at home.<br /><i>Under control.</i></h1><p className="login-copy">A private command center for the machines that make your home work.</p></div>
+      <div><p className="eyebrow">LABDECK / CONTROL PLANE</p><h1>Everything at home.<br /><i>Under control.</i></h1><p className="login-copy">A private command center for the machines that make your home work.</p></div>
       <form onSubmit={login}>
         <label>Server Address (optional for web)<div className="input-wrap"><Server size={17} /><input value={serverAddress} onChange={e => { setServerAddress(e.target.value); localStorage.setItem('server_address', e.target.value); }} placeholder="e.g. http://192.168.1.100:8080" /></div></label>
         <label>Email or username<div className="input-wrap"><User size={17} /><input value={username} onChange={e => setUsername(e.target.value)} placeholder="admin" required /></div></label>
@@ -322,8 +386,43 @@ export default function App() {
 
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
-      <div className="sidebar-top"><div className="logo"><div className="brand-mark small"><Command size={19} /></div><span>homelab<span>.os</span></span></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X size={19} /></button></div>
-      <div className="server-switch"><span className="online-dot" /><div><b>{hostname}</b><small>Primary server</small></div><ChevronRight size={15} /></div>
+      <div className="sidebar-top"><div className="logo"><div className="brand-mark small"><Command size={19} /></div><span>lab<span>deck</span></span></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X size={19} /></button></div>
+      <div className="server-switch" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span className="online-dot" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <b style={{ fontSize: '12px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hostname}</b>
+            <small style={{ color: 'var(--muted)', fontSize: '10px' }}>{serverAddress ? serverAddress.replace(/^https?:\/\//, '') : 'Local Server'}</small>
+          </div>
+        </div>
+        {serversList.length > 0 && (
+          <select 
+            value={serverAddress} 
+            onChange={e => {
+              setServerAddress(e.target.value);
+              localStorage.setItem('server_address', e.target.value);
+              postLog(`Switched node context to: ${e.target.value || 'Local Host'}`);
+            }}
+            style={{
+              background: 'var(--bg)',
+              border: '1px solid var(--line)',
+              borderRadius: '6px',
+              color: 'var(--text)',
+              fontSize: '10px',
+              padding: '4px 8px',
+              marginTop: '4px',
+              width: '100%',
+              outline: 'none',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="">Local Server (Default)</option>
+            {serversList.map(srv => (
+              <option key={srv} value={srv}>{srv.replace(/^https?:\/\//, '')}</option>
+            ))}
+          </select>
+        )}
+      </div>
       <p className="nav-label">Workspace</p>
       <nav>{navigation.slice(0, 4).map(item => <NavItem key={item.id} item={item} active={activeTab} select={setActiveTab} close={() => setMenuOpen(false)} />)}</nav>
       <p className="nav-label">Manage</p>
@@ -349,7 +448,24 @@ export default function App() {
         {activeTab === 'network' && <NetworkView system={systemData} testConnection={testConnection} testingConnection={testingConnection} />}
         {activeTab === 'terminal' && <TerminalView />}
         {activeTab === 'logs' && <Logs events={events} exportLogs={exportLogs} />}
-        {activeTab === 'settings' && <SettingsView serverAddress={serverAddress} setServerAddress={setServerAddress} API_URL={API_URL} authenticated={authenticated} postLog={postLog} testConnection={testConnection} scanDisks={scanDisks} />}
+        {activeTab === 'settings' && (
+          <SettingsView 
+            serverAddress={serverAddress} 
+            setServerAddress={setServerAddress} 
+            serversList={serversList} 
+            addServer={addServer} 
+            removeServer={removeServer} 
+            updateInfo={updateInfo}
+            checkingUpdate={checkingUpdate}
+            updating={updating}
+            triggerSystemUpdate={triggerSystemUpdate}
+            API_URL={API_URL} 
+            authenticated={authenticated} 
+            postLog={postLog} 
+            testConnection={testConnection} 
+            scanDisks={scanDisks} 
+          />
+        )}
       </section>
     </main>
 
@@ -1126,8 +1242,24 @@ function TerminalView() {
 function Logs({ events, exportLogs }: any) { return <><PageHeader eyebrow="Audit trail" title="Activity log" description="A chronological view of actions and infrastructure events." action={<button onClick={exportLogs} className="outline-button"><FileText size={16} /> Export</button>} /><div className="panel log-list">{events.map((event: string, index: number) => <div key={`${event}${index}`}><span className="log-icon"><Clock3 size={17} /></span><p><b>{event}</b><small>{index === 0 ? 'Just now' : `${index * 12} minutes ago`} · System</small></p><span className="badge success">Info</span></div>)}</div></> }
 function Empty({ title, text }: any) { return <div className="empty"><Boxes size={28} /><b>{title}</b><span>{text}</span></div>; }
 
-function SettingsView({ serverAddress, setServerAddress, API_URL, authenticated, postLog, testConnection, scanDisks }: any) {
+function SettingsView({ 
+  serverAddress, 
+  setServerAddress, 
+  serversList, 
+  addServer, 
+  removeServer, 
+  updateInfo, 
+  checkingUpdate, 
+  updating, 
+  triggerSystemUpdate, 
+  API_URL, 
+  authenticated, 
+  postLog, 
+  testConnection, 
+  scanDisks 
+}: any) {
   const [addressInput, setAddressInput] = useState(serverAddress);
+  const [newServerUrl, setNewServerUrl] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -1140,8 +1272,17 @@ function SettingsView({ serverAddress, setServerAddress, API_URL, authenticated,
     e.preventDefault();
     setServerAddress(addressInput);
     localStorage.setItem('server_address', addressInput);
-    postLog(`Server endpoint address updated to: ${addressInput || 'default (origin)'}`);
-    alert('Server connection endpoint updated.');
+    postLog(`Active server endpoint updated to: ${addressInput || 'Local Server'}`);
+    alert('Active connection target updated.');
+  };
+
+  const handleAddServer = (e: FormEvent) => {
+    e.preventDefault();
+    if (!newServerUrl) return;
+    addServer(newServerUrl);
+    postLog(`Registered new server node endpoint: ${newServerUrl}`);
+    setNewServerUrl('');
+    alert('Server endpoint added to clustering list.');
   };
 
   const handleChangePassword = async (e: FormEvent) => {
@@ -1190,14 +1331,41 @@ function SettingsView({ serverAddress, setServerAddress, API_URL, authenticated,
       <PageHeader
         eyebrow="Preferences & security"
         title="System Settings"
-        description="Configure your control center endpoints, security credentials, and preferences."
+        description="Configure your control center endpoints, cluster servers, security credentials, and preferences."
       />
+
+      {/* Home Assistant style System Update Banner */}
+      {updateInfo && updateInfo.update_available && (
+        <div className="panel" style={{ borderLeft: '4px solid var(--violet)', marginBottom: '20px', background: 'linear-gradient(145deg, #201b35, #191a1e)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+            <div>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Zap size={16} style={{ color: 'var(--violet)' }} /> Update Available for LabDeck
+              </h3>
+              <p style={{ margin: 0, fontSize: '11px', color: '#a7a8ae' }}>
+                A new version <b>{updateInfo.latest_version}</b> is available (Current: {updateInfo.current_version}).
+              </p>
+              <p style={{ margin: '8px 0 0 0', fontSize: '10px', color: 'var(--muted)' }}>
+                {updateInfo.description}
+              </p>
+            </div>
+            <button 
+              onClick={triggerSystemUpdate} 
+              disabled={updating} 
+              className="primary-small" 
+              style={{ padding: '8px 16px', background: 'linear-gradient(135deg, #9d82ff, #795ed9)' }}
+            >
+              {updating ? 'Updating...' : `Install Update ${updateInfo.latest_version}`}
+            </button>
+          </div>
+        </div>
+      )}
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', alignItems: 'start' }}>
         
-        {/* Connection Settings panel */}
+        {/* Active Telemetry Endpoint */}
         <div className="panel">
-          <PanelTitle title="Server Connection" subtitle="Manage API telemetry endpoints" />
+          <PanelTitle title="Active Connection" subtitle="Currently active target endpoint URL" />
           <form onSubmit={handleSaveConnection} style={{ display: 'grid', gap: '14px', marginTop: '12px' }}>
             <label style={{ display: 'block' }}>
               <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>API Server URL</span>
@@ -1206,22 +1374,93 @@ function SettingsView({ serverAddress, setServerAddress, API_URL, authenticated,
                 <input 
                   value={addressInput} 
                   onChange={e => setAddressInput(e.target.value)} 
-                  placeholder="e.g. http://192.168.1.100:8080 (Leave empty for default host)" 
+                  placeholder="e.g. http://192.168.1.100:8080 (Leave empty for local host)" 
                 />
               </div>
-              <span style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
-                Changes will take effect instantly for telemetry polling.
-              </span>
             </label>
             <button className="primary-small" type="submit" style={{ justifySelf: 'start' }}>
-              Save Endpoint
+              Switch Active Target
             </button>
           </form>
         </div>
 
+        {/* Server Clustering Management */}
+        <div className="panel">
+          <PanelTitle title="Server Nodes" subtitle="Register and manage multiple LabDeck server URLs" />
+          
+          <form onSubmit={handleAddServer} style={{ display: 'flex', gap: '8px', marginTop: '12px', marginBottom: '16px' }}>
+            <div className="input-wrap" style={{ flex: 1, marginTop: 0, height: '34px' }}>
+              <Plus size={14} />
+              <input 
+                value={newServerUrl} 
+                onChange={e => setNewServerUrl(e.target.value)} 
+                placeholder="e.g. http://192.168.1.105:8080" 
+                style={{ fontSize: '11px' }}
+                required 
+              />
+            </div>
+            <button type="submit" className="outline-button" style={{ height: '34px' }}>
+              Add Node
+            </button>
+          </form>
+
+          <div>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+              Registered Nodes
+            </span>
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <div 
+                onClick={() => { setAddressInput(''); setServerAddress(''); localStorage.removeItem('server_address'); }}
+                style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  padding: '8px 12px', 
+                  background: !serverAddress ? '#25262c' : '#1c1d21', 
+                  borderRadius: '8px', 
+                  border: !serverAddress ? '1px solid var(--violet)' : '1px solid #2a2b30',
+                  cursor: 'pointer'
+                }}
+              >
+                <span style={{ fontSize: '11px', fontWeight: 600 }}>Local Server (Default)</span>
+                <span style={{ fontSize: '9px', color: 'var(--green)' }}>● Active</span>
+              </div>
+
+              {serversList.map((url: string) => (
+                <div 
+                  key={url}
+                  onClick={() => { setAddressInput(url); setServerAddress(url); localStorage.setItem('server_address', url); }}
+                  style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '8px 12px', 
+                    background: serverAddress === url ? '#25262c' : '#1c1d21', 
+                    borderRadius: '8px', 
+                    border: serverAddress === url ? '1px solid var(--violet)' : '1px solid #2a2b30',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ fontSize: '11px', fontFamily: 'monospace', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', maxWidth: '75%' }}>{url}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {serverAddress === url && <span style={{ fontSize: '9px', color: 'var(--green)' }}>● Active</span>}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); removeServer(url); }}
+                      style={{ background: 'transparent', border: 'none', color: '#ee907f', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                      title="Remove Node"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         {/* Security Settings panel */}
         <div className="panel">
-          <PanelTitle title="Security & Authentication" subtitle="Update control center password" />
+          <PanelTitle title="Security & Credentials" subtitle="Update control center password" />
           <form onSubmit={handleChangePassword} style={{ display: 'grid', gap: '14px', marginTop: '12px' }}>
             <label style={{ display: 'block' }}>
               <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Current Password</span>
@@ -1332,7 +1571,7 @@ function SettingsView({ serverAddress, setServerAddress, API_URL, authenticated,
               </button>
             </div>
             <div style={{ borderTop: '1px solid var(--line)', paddingTop: '12px', marginTop: '4px' }}>
-              <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 600 }}>HomelabOS Platform Info</p>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 600 }}>LabDeck Platform Info</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '10px', color: 'var(--muted)', marginTop: '8px' }}>
                 <div>Control Plane: <b>v1.4.2-stable</b></div>
                 <div>Docker Engine: <b>API 1.45</b></div>
