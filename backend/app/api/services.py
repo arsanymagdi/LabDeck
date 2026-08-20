@@ -86,6 +86,8 @@ def get_services(current_user: str = Depends(get_current_user)):
         })
     return result
 
+from app.core.metrics_db import save_log, cleanup_logs
+
 @router.post("")
 def add_service(service: ServiceModel, current_user: str = Depends(get_current_user)):
     services = load_services()
@@ -98,6 +100,8 @@ def add_service(service: ServiceModel, current_user: str = Depends(get_current_u
         "port": service.port
     })
     save_services(services)
+    save_log(f"Service added: {service.name} (Port: {service.port})")
+    cleanup_logs()
     return {"message": "Service added successfully"}
 
 @router.delete("/{name}")
@@ -107,4 +111,7 @@ def delete_service(name: str, current_user: str = Depends(get_current_user)):
     if len(filtered_services) == len(services):
         raise HTTPException(status_code=404, detail="Service not found")
     save_services(filtered_services)
+    save_log(f"Service deleted: {name}")
+    cleanup_logs()
     return {"message": "Service deleted successfully"}
+

@@ -171,11 +171,30 @@ from app.core.metrics_db import get_history
 def get_metrics_history(current_user: str = Depends(get_current_user)):
     return get_history()
 
+from app.core.metrics_db import get_activity_logs, save_log, cleanup_logs
+from pydantic import BaseModel
+
+class LogRequest(BaseModel):
+    message: str
+
+@router.get("/logs")
+def get_system_logs(current_user: str = Depends(get_current_user)):
+    return get_activity_logs()
+
+@router.post("/logs")
+def add_system_log(request: LogRequest, current_user: str = Depends(get_current_user)):
+    save_log(request.message)
+    cleanup_logs()
+    return {"message": "Log added successfully"}
+
 @router.post("/run-automation")
 def run_automation(current_user: str = Depends(get_current_user)):
+    msg = "System health optimization and backup process completed successfully."
+    save_log(f"Manual automation run: {msg}")
+    cleanup_logs()
     return {
         "status": "success",
-        "message": "System health optimization and backup process completed successfully.",
+        "message": msg,
         "steps": [
             "Initializing secure backup sequence...",
             "Pruning system temporary cache files...",
@@ -183,5 +202,6 @@ def run_automation(current_user: str = Depends(get_current_user)):
             "Backup archive successfully saved to local vault (backup_latest.tar.gz)."
         ]
     }
+
 
 

@@ -83,14 +83,18 @@ def list_containers(current_user: str = Depends(get_current_user)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+from app.core.metrics_db import save_log, cleanup_logs
+
 @router.post("/{container_id}/{action}")
 def container_action(container_id: str, action: str, current_user: str = Depends(get_current_user)):
     if action not in ["start", "stop", "restart"]:
         raise HTTPException(status_code=400, detail="Invalid action")
 
     if container_id.startswith("mock-"):
-        # Allow mock actions for testing the UI
-        return {"status": "success", "message": f"Mock action '{action}' executed on {container_id}."}
+        msg = f"Mock action '{action}' executed on {container_id}."
+        save_log(msg)
+        cleanup_logs()
+        return {"status": "success", "message": msg}
 
     client = get_docker_client()
     if not client:
@@ -104,9 +108,13 @@ def container_action(container_id: str, action: str, current_user: str = Depends
             container.stop()
         elif action == "restart":
             container.restart()
-        return {"status": "success", "message": f"Container {container_id} {action}ed successfully."}
+        msg = f"Container {container.name or container_id} ({action}ed) successfully."
+        save_log(msg)
+        cleanup_logs()
+        return {"status": "success", "message": msg}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/{container_id}/logs")
 def get_container_logs(container_id: str, tail: int = 100, current_user: str = Depends(get_current_user)):

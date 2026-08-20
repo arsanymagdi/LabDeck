@@ -20,11 +20,34 @@ async def collect_metrics_loop():
         try:
             cpu = psutil.cpu_percent(interval=None)
             mem = psutil.virtual_memory().percent
-            save_metric(cpu, mem)
+            
+            # Find top 3 processes using resources
+            top_processes = []
+            try:
+                for proc in psutil.process_iter(['name', 'cpu_percent', 'memory_percent']):
+                    try:
+                        pinfo = proc.info
+                        pcpu = pinfo['cpu_percent'] or 0.0
+                        pmem = pinfo['memory_percent'] or 0.0
+                        top_processes.append({
+                            "name": pinfo['name'],
+                            "cpu": round(pcpu, 1),
+                            "memory": round(pmem, 1)
+                        })
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                        pass
+                top_processes.sort(key=lambda x: x['cpu'] + x['memory'], reverse=True)
+                top_processes = top_processes[:3]
+            except Exception as pe:
+                print(f"Error gathering top processes: {pe}")
+                top_processes = []
+
+            save_metric(cpu, mem, top_processes)
             cleanup_metrics()
         except Exception as e:
             print(f"Error in collect_metrics_loop: {e}")
         await asyncio.sleep(60)
+
 
 
 # Allow CORS for React development server
