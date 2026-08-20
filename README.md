@@ -15,7 +15,7 @@ The installer creates a local `.env`, generates a JWT secret, optionally collect
 
 ## File storage
 
-The Storage page can upload, download, and delete files from your browser. Files are kept on the host at `/home/arsani/homelab/data/storage/` and mounted into the API container at `/storage`. Create it before starting the stack if needed:
+The Storage page is a browser for `/home/arsani/`, including `/home/arsani/homelab/data/storage/`. It can upload, download, create folders, and delete files from your browser. Create the storage subdirectory before starting the stack if needed:
 
 ```bash
 mkdir -p /home/arsani/homelab/data/storage

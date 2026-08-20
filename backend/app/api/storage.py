@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -13,13 +12,10 @@ STORAGE_ROOT = Path(os.environ.get("STORAGE_PATH", "/storage")).resolve()
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024 * 1024  # 10 GiB
 
 
-def storage_path(filename: str) -> Path:
-    """Resolve a filename safely inside the configured storage directory."""
-    clean_name = Path(filename).name
-    if not clean_name or clean_name in {".", ".."}:
-        raise HTTPException(status_code=400, detail="A valid file name is required")
-    target = (STORAGE_ROOT / clean_name).resolve()
-    if target.parent != STORAGE_ROOT:
+def storage_path(relative_path: str = "") -> Path:
+    """Resolve a relative browser path safely inside the storage directory."""
+    target = (STORAGE_ROOT / relative_path).resolve()
+    if target != STORAGE_ROOT and STORAGE_ROOT not in target.parents:
         raise HTTPException(status_code=400, detail="Invalid storage path")
     return target
 
@@ -29,29 +25,54 @@ def ensure_storage_root() -> None:
 
 
 @router.get("/files")
-def list_files(current_user: str = Depends(get_current_user)):
+def list_files(directory: str = "", current_user: str = Depends(get_current_user)):
     ensure_storage_root()
-    files = []
-    for item in STORAGE_ROOT.iterdir():
-        if item.is_file():
-            details = item.stat()
-            files.append({
-                "name": item.name,
-                "size": details.st_size,
-                "modified": details.st_mtime,
-            })
-    return sorted(files, key=lambda item: item["modified"], reverse=True)
+    folder = storage_path(directory)
+    if not folder.is_dir():
+        raise HTTPException(status_code=404, detail="Folder not found")
+    entries = []
+    for item in folder.iterdir():
+        if item.is_symlink():
+            continue
+        details = item.stat()
+        entries.append({
+            "name": item.name,
+            "path": str(item.relative_to(STORAGE_ROOT)),
+            "type": "folder" if item.is_dir() else "file",
+            "size": details.st_size if item.is_file() else None,
+            "modified": details.st_mtime,
+        })
+    return sorted(entries, key=lambda item: (item["type"] != "folder", item["name"].lower()))
+
+
+@router.post("/folders", status_code=status.HTTP_201_CREATED)
+def create_folder(name: str, directory: str = "", current_user: str = Depends(get_current_user)):
+    ensure_storage_root()
+    if not name or Path(name).name != name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="A valid folder name is required")
+    parent = storage_path(directory)
+    if not parent.is_dir():
+        raise HTTPException(status_code=404, detail="Folder not found")
+    target = storage_path(str(Path(directory) / name))
+    if target.exists():
+        raise HTTPException(status_code=409, detail="An item with this name already exists")
+    target.mkdir()
+    return {"name": target.name, "path": str(target.relative_to(STORAGE_ROOT)), "type": "folder"}
 
 
 @router.post("/files", status_code=status.HTTP_201_CREATED)
-async def upload_file(file: UploadFile, current_user: str = Depends(get_current_user)):
+async def upload_file(file: UploadFile, directory: str = "", current_user: str = Depends(get_current_user)):
     ensure_storage_root()
-    target = storage_path(file.filename or "")
+    name = Path(file.filename or "").name
+    if not name or name in {".", ".."}:
+        raise HTTPException(status_code=400, detail="A valid file name is required")
+    parent = storage_path(directory)
+    if not parent.is_dir():
+        raise HTTPException(status_code=404, detail="Folder not found")
+    target = storage_path(str(Path(directory) / name))
     if target.exists():
-        raise HTTPException(status_code=409, detail="A file with this name already exists")
-
-    temporary = target.with_name(f".{target.name}.uploading")
-    total_size = 0
+        raise HTTPException(status_code=409, detail="An item with this name already exists")
+    temporary, total_size = target.with_name(f".{target.name}.uploading"), 0
     try:
         with temporary.open("wb") as destination:
             while chunk := await file.read(1024 * 1024):
@@ -65,21 +86,26 @@ async def upload_file(file: UploadFile, current_user: str = Depends(get_current_
         raise
     finally:
         await file.close()
+    return {"name": target.name, "path": str(target.relative_to(STORAGE_ROOT)), "size": total_size}
 
-    return {"name": target.name, "size": total_size}
 
-
-@router.get("/files/{filename}")
-def download_file(filename: str, current_user: str = Depends(get_current_user)):
-    target = storage_path(filename)
-    if not target.is_file():
+@router.get("/files/{path:path}")
+def download_file(path: str, current_user: str = Depends(get_current_user)):
+    target = storage_path(path)
+    if not target.is_file() or target.is_symlink():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(target, filename=target.name)
 
 
-@router.delete("/files/{filename}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_file(filename: str, current_user: str = Depends(get_current_user)):
-    target = storage_path(filename)
-    if not target.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-    target.unlink()
+@router.delete("/files/{path:path}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_item(path: str, current_user: str = Depends(get_current_user)):
+    target = storage_path(path)
+    if target == STORAGE_ROOT or not target.exists() or target.is_symlink():
+        raise HTTPException(status_code=404, detail="Item not found")
+    if target.is_dir():
+        try:
+            target.rmdir()
+        except OSError:
+            raise HTTPException(status_code=409, detail="Folder is not empty")
+    else:
+        target.unlink()

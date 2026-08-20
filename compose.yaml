@@ -10,7 +10,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /:/host:ro
-      - /home/arsani/homelab/data/storage:/storage
+      - /home/arsani:/home/arsani
+    environment:
+      STORAGE_PATH: /home/arsani
     pid: host
     networks: [homelabos]
   web:
