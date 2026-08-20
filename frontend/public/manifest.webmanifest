@@ -1,1 +1,1 @@
-{"name":"HomelabOS Control Center","short_name":"HomelabOS","start_url":"/","display":"standalone","background_color":"#101113","theme_color":"#101113","description":"Private infrastructure control center"}
+{"name":"HomelabOS Control Center","short_name":"HomelabOS","start_url":"/","display":"standalone","background_color":"#101113","theme_color":"#101113","description":"Private infrastructure control center","icons":[{"src":"/favicon.png","sizes":"500x499","type":"image/png","purpose":"any maskable"}]}
