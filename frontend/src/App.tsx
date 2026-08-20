@@ -50,7 +50,6 @@ export default function App() {
   });
 
   const [updateInfo, setUpdateInfo] = useState<any>(null);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updating, setUpdating] = useState(false);
 
   const addServer = (url: string) => {
@@ -113,7 +112,6 @@ export default function App() {
   const logout = () => { localStorage.removeItem('token'); ws.current?.close(); setToken(null); };
 
   const checkSystemUpdate = async () => {
-    setCheckingUpdate(true);
     try {
       const response = await fetch(`${API_URL}/system/update-check`, { headers: authenticated() });
       if (response.ok) {
@@ -121,8 +119,6 @@ export default function App() {
       }
     } catch (e) {
       console.error("Error checking system updates", e);
-    } finally {
-      setCheckingUpdate(false);
     }
   };
 
