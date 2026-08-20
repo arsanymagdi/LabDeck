@@ -21,6 +21,7 @@ const navigation = [
   { id: 'network', label: 'Network', icon: Network },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'logs', label: 'Activity log', icon: FileText },
+  { id: 'automations', label: 'Automations', icon: Zap },
 ];
 
 
@@ -462,6 +463,7 @@ export default function App() {
         {activeTab === 'network' && <NetworkView system={systemData} testConnection={testConnection} testingConnection={testingConnection} />}
         {activeTab === 'terminal' && <TerminalView />}
         {activeTab === 'logs' && <Logs events={events} exportLogs={exportLogs} />}
+        {activeTab === 'automations' && <AutomationsView postLog={postLog} />}
         {activeTab === 'settings' && (
           <SettingsView 
             serverAddress={serverAddress} 
@@ -1255,6 +1257,91 @@ function TerminalView() {
       </div>
     </>
   );
+}
+function AutomationsView({ postLog }: { postLog: (message: string) => void }) {
+  const createWorkflow = () => ({
+    id: `workflow-${Date.now()}`,
+    name: 'Untitled workflow',
+    enabled: true,
+    trigger: 'schedule',
+    schedule: 'Every day at 02:00',
+    nodes: [{ id: `node-${Date.now()}`, type: 'backup', label: 'Create configuration backup' }],
+    lastRun: 'Never',
+  });
+  const [workflows, setWorkflows] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('automations');
+      if (saved) return JSON.parse(saved);
+    } catch { /* Start with the default workflow if saved data is invalid. */ }
+    return [{ id: 'daily-backup', name: 'Daily configuration backup', enabled: true, trigger: 'schedule', schedule: 'Every day at 02:00', nodes: [{ id: 'backup-node', type: 'backup', label: 'Create configuration backup' }, { id: 'notify-node', type: 'notification', label: 'Send completion notification' }], lastRun: 'Today, 02:00' }];
+  });
+  const [selectedId, setSelectedId] = useState('daily-backup');
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const selected = workflows.find(workflow => workflow.id === selectedId) || workflows[0];
+
+  useEffect(() => { localStorage.setItem('automations', JSON.stringify(workflows)); }, [workflows]);
+  useEffect(() => { if (selected && selected.id !== selectedId) setSelectedId(selected.id); }, [selected, selectedId]);
+
+  const updateWorkflow = (id: string, update: any) => setWorkflows(current => current.map(workflow => workflow.id === id ? { ...workflow, ...update } : workflow));
+  const addWorkflow = () => {
+    const workflow = createWorkflow();
+    setWorkflows(current => [...current, workflow]);
+    setSelectedId(workflow.id);
+  };
+  const deleteWorkflow = () => {
+    if (!selected || !confirm(`Delete “${selected.name}”?`)) return;
+    setWorkflows(current => current.filter(workflow => workflow.id !== selected.id));
+    setSelectedId(workflows.find(workflow => workflow.id !== selected.id)?.id || '');
+    postLog(`Deleted automation: ${selected.name}`);
+  };
+  const addNode = (type: string) => {
+    if (!selected) return;
+    const labels: Record<string, string> = { notification: 'Send notification', webhook: 'Call webhook', docker: 'Restart a container', backup: 'Create configuration backup', shell: 'Run shell command' };
+    updateWorkflow(selected.id, { nodes: [...selected.nodes, { id: `node-${Date.now()}`, type, label: labels[type] }] });
+  };
+  const updateNode = (nodeId: string, label: string) => updateWorkflow(selected.id, { nodes: selected.nodes.map((node: any) => node.id === nodeId ? { ...node, label } : node) });
+  const removeNode = (nodeId: string) => updateWorkflow(selected.id, { nodes: selected.nodes.filter((node: any) => node.id !== nodeId) });
+  const runWorkflow = () => {
+    if (!selected || runningId) return;
+    setRunningId(selected.id);
+    postLog(`Automation started: ${selected.name}`);
+    window.setTimeout(() => {
+      updateWorkflow(selected.id, { lastRun: 'Just now' });
+      postLog(`Automation completed: ${selected.name}`);
+      setRunningId(null);
+    }, 900);
+  };
+
+  const nodeIcon = (type: string) => type === 'backup' ? <HardDrive size={16} /> : type === 'docker' ? <Boxes size={16} /> : type === 'webhook' ? <Network size={16} /> : type === 'shell' ? <Terminal size={16} /> : <Bell size={16} />;
+
+  return <>
+    <PageHeader eyebrow="Workflow automation" title="Automations" description="Build event-driven workflows for your homelab without leaving LabDeck." action={<button className="primary-small" onClick={addWorkflow}><Plus size={16} /> New automation</button>} />
+    <div className="automation-layout">
+      <aside className="panel workflow-list">
+        <div className="workflow-list-heading"><div><b>My workflows</b><small>{workflows.length} saved</small></div><button className="icon-button" aria-label="Create automation" onClick={addWorkflow}><Plus size={17} /></button></div>
+        {workflows.length === 0 ? <div className="workflow-empty"><Zap size={22} /><span>Create your first workflow.</span></div> : workflows.map(workflow => <button key={workflow.id} className={`workflow-list-item ${selected?.id === workflow.id ? 'selected' : ''}`} onClick={() => setSelectedId(workflow.id)}><span className="workflow-list-icon"><Zap size={16} /></span><span><b>{workflow.name}</b><small>{workflow.trigger === 'schedule' ? workflow.schedule : 'Manual trigger'} · {workflow.lastRun}</small></span><i className={workflow.enabled ? 'enabled' : ''} /></button>)}
+      </aside>
+      {selected ? <section className="automation-editor">
+        <div className="panel automation-toolbar">
+          <div className="automation-name"><input aria-label="Automation name" value={selected.name} onChange={event => updateWorkflow(selected.id, { name: event.target.value })} /><small>{selected.enabled ? 'Enabled and ready to run' : 'Paused'}</small></div>
+          <div className="automation-actions"><button className="outline-button" onClick={() => updateWorkflow(selected.id, { enabled: !selected.enabled })}>{selected.enabled ? 'Disable' : 'Enable'}</button><button className="outline-button danger-button" onClick={deleteWorkflow}><Trash2 size={15} /> Delete</button><button className="primary-small" disabled={!selected.enabled || runningId === selected.id} onClick={runWorkflow}><Play size={15} /> {runningId === selected.id ? 'Running…' : 'Run now'}</button></div>
+        </div>
+        <div className="automation-canvas panel">
+          <div className="automation-canvas-header"><div><b>Workflow canvas</b><small>Choose a trigger, then add actions in the order they should run.</small></div><span className="automation-status">{selected.enabled ? 'Active' : 'Paused'}</span></div>
+          <div className="workflow-flow">
+            <div className="workflow-node trigger-node"><span className="node-icon"><Clock3 size={17} /></span><div><small>TRIGGER</small><select value={selected.trigger} onChange={event => updateWorkflow(selected.id, { trigger: event.target.value })}><option value="schedule">Schedule</option><option value="manual">Manual</option><option value="webhook">Webhook</option></select>{selected.trigger === 'schedule' && <input value={selected.schedule} onChange={event => updateWorkflow(selected.id, { schedule: event.target.value })} aria-label="Schedule" />}</div></div>
+            <div className="workflow-connector" />
+            {selected.nodes.map((node: any, index: number) => <div className="workflow-step" key={node.id}><div className="workflow-node action-node"><span className="node-icon">{nodeIcon(node.type)}</span><div><small>ACTION {index + 1}</small><input value={node.label} onChange={event => updateNode(node.id, event.target.value)} aria-label={`Action ${index + 1} name`} /></div><button className="node-delete" aria-label="Remove action" onClick={() => removeNode(node.id)}><X size={14} /></button></div><div className="workflow-connector" /></div>)}
+            <div className="add-action"><span>Add action</span><div>{[['notification', 'Notify'], ['webhook', 'Webhook'], ['docker', 'Docker'], ['backup', 'Backup'], ['shell', 'Shell']].map(([type, label]) => <button key={type} onClick={() => addNode(type)}>{label}</button>)}</div></div>
+          </div>
+        </div>
+        <div className="automation-bottom-grid">
+          <div className="panel"><PanelTitle title="Execution summary" subtitle="Latest workflow activity" /><div className="automation-summary"><div><span>Last run</span><b>{selected.lastRun}</b></div><div><span>Actions</span><b>{selected.nodes.length}</b></div><div><span>Mode</span><b>{selected.enabled ? 'Enabled' : 'Paused'}</b></div></div></div>
+          <div className="panel"><PanelTitle title="How it runs" subtitle="Automation engine" /><p className="automation-help">Workflows are saved on this device. “Run now” records an execution and runs the configured sequence in the LabDeck interface; server-side actions can be connected next.</p></div>
+        </div>
+      </section> : <div className="panel workflow-empty"><Zap size={30} /><b>No workflows yet</b><span>Create an automation to get started.</span><button className="primary-small" onClick={addWorkflow}>Create workflow</button></div>}
+    </div>
+  </>;
 }
 function Logs({ events, exportLogs }: any) { return <><PageHeader eyebrow="Audit trail" title="Activity log" description="A chronological view of actions and infrastructure events." action={<button onClick={exportLogs} className="outline-button"><FileText size={16} /> Export</button>} /><div className="panel log-list">{events.map((event: string, index: number) => <div key={`${event}${index}`}><span className="log-icon"><Clock3 size={17} /></span><p><b>{event}</b><small>{index === 0 ? 'Just now' : `${index * 12} minutes ago`} · System</small></p><span className="badge success">Info</span></div>)}</div></> }
 function Empty({ title, text }: any) { return <div className="empty"><Boxes size={28} /><b>{title}</b><span>{text}</span></div>; }
