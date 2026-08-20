@@ -4,13 +4,17 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
-      node: v22.11.0
+      # Vite 8 requires Node 20.19+ or 22.12+.
+      node: lts
       xcode: latest
     scripts:
       - name: Install JavaScript dependencies
         script: |
           npm ci
-          npm --prefix frontend ci
+          # Vite/Rolldown loads a macOS-native optional package. A clean `npm install`
+          # keeps npm from dropping that package on Apple Silicon builders.
+          rm -rf frontend/node_modules
+          npm --prefix frontend install --include=optional --no-package-lock
       - name: Build web app and sync Capacitor iOS assets
         script: npm run cap:sync:ios
       - name: Archive iOS app without code signing

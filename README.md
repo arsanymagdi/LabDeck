@@ -57,7 +57,7 @@ npm run cap:sync:ios
 
 Open `ios/App/App.xcodeproj` in Xcode to run it on a simulator or a signed device. The app asks for the Homelab server URL at login; use an HTTPS URL whenever possible. HTTP LAN addresses work in this native build to support private homelabs.
 
-For Codemagic, commit `codemagic.yaml`, add the repository as a **React Native / Ionic Capacitor** app, and run the `ios-unsigned-ipa` workflow. It builds the frontend, syncs Capacitor, archives with code signing explicitly disabled, and uploads `LabDeck-unsigned.ipa` as an artifact. An unsigned IPA cannot be installed on a physical iPhone directly: it must be signed later (for example for development, ad-hoc distribution, TestFlight, or an approved sideloading workflow).
+For Codemagic, commit `codemagic.yaml`, add the repository as an **Ionic Capacitor** app (or use the custom `codemagic.yaml` option), and run the `ios-unsigned-ipa` workflow. It builds the frontend, syncs Capacitor, archives with code signing explicitly disabled, and uploads `LabDeck-unsigned.ipa` as an artifact. The workflow uses a clean macOS frontend install so Vite can load its Apple Silicon native dependency. An unsigned IPA cannot be installed on a physical iPhone directly: it must be signed later (for example for development, ad-hoc distribution, TestFlight, or an approved sideloading workflow).
 
 ## Development
 
