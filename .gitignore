@@ -1,0 +1,19 @@
+# Secrets and local deployment state
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node / Vite output
+node_modules/
+dist/
+
+# Editor and OS files
+.DS_Store
+.vscode/
+.idea/

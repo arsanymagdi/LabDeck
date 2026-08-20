@@ -1,0 +1,30 @@
+name: homelabos
+
+services:
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /:/host:ro
+    pid: host
+    networks: [homelabos]
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${HOMELABOS_PORT:-8080}:80"
+    networks: [homelabos]
+  ttyd:
+    image: tsl0922/ttyd:latest
+    restart: unless-stopped
+    command: ["ttyd", "-W", "bash"]
+    profiles: ["terminal"]
+    networks: [homelabos]
+networks:
+  homelabos:
+    driver: bridge

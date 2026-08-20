@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { min-width: 320px; min-height: 100%; margin: 0; }
+body { overflow-x: hidden; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #131417; }
+::-webkit-scrollbar-thumb { background: #3a3b42; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #50515a; }

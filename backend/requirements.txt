@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+psutil
+pyjwt
+passlib[bcrypt]
+python-multipart
+docker
+firebase-admin
