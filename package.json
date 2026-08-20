@@ -1,0 +1,29 @@
+{
+  "name": "homelab-dashboard",
+  "version": "1.0.0",
+  "description": "HomelabOS is a single-repository, self-hosted control plane for a Docker-based homelab. It includes the React dashboard, FastAPI control API, live telemetry, Docker discovery/control, an installable mobile web app, and an optional browser terminal service.",
+  "main": "index.js",
+  "scripts": {
+    "build:web": "npm --prefix frontend run build",
+    "cap:sync:ios": "npm run build:web && npx cap sync ios",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arsanymagdi/LabDeck.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/arsanymagdi/LabDeck/issues"
+  },
+  "homepage": "https://github.com/arsanymagdi/LabDeck#readme",
+  "dependencies": {
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0"
+  }
+}

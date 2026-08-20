@@ -1,0 +1,39 @@
+workflows:
+  ios-unsigned-ipa:
+    name: LabDeck iOS (unsigned IPA)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      node: v22.11.0
+      xcode: latest
+    scripts:
+      - name: Install JavaScript dependencies
+        script: |
+          npm ci
+          npm --prefix frontend ci
+      - name: Build web app and sync Capacitor iOS assets
+        script: npm run cap:sync:ios
+      - name: Archive iOS app without code signing
+        script: |
+          xcodebuild archive \
+            -project "$CM_BUILD_DIR/ios/App/App.xcodeproj" \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$CM_BUILD_DIR/build/LabDeck.xcarchive" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM=""
+      - name: Package unsigned IPA
+        script: |
+          mkdir -p "$CM_BUILD_DIR/build/Payload"
+          cp -R "$CM_BUILD_DIR/build/LabDeck.xcarchive/Products/Applications/App.app" \
+            "$CM_BUILD_DIR/build/Payload/LabDeck.app"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$CM_BUILD_DIR/build/Payload" \
+            "$CM_BUILD_DIR/build/LabDeck-unsigned.ipa"
+    artifacts:
+      - build/LabDeck-unsigned.ipa
+      - build/LabDeck.xcarchive
+      - /tmp/xcodebuild_logs/*.log
