@@ -22,7 +22,7 @@ services:
   ttyd:
     build: ./terminal
     restart: unless-stopped
-    command: ["ttyd", "-W", "-b", "/ttyd", "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "login", "-f", "root"]
+    command: ["ttyd", "-W", "-b", "/ttyd", "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "sh", "-c", "cd /root && exec bash --login"]
     privileged: true
     pid: host
     networks: [homelabos]
