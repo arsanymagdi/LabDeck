@@ -343,7 +343,7 @@ export default function App() {
       </header>
       <section className="content">
         {activeTab === 'dashboard' && <Dashboard cpu={cpu} memory={memory} disk={disk} system={systemData} running={running} total={containers.length} loading={loading} refresh={refresh} cpuHistory={cpuHistory} memHistory={memHistory} setActiveTab={setActiveTab} runAutomation={runAutomation} automationRunning={automationRunning} setMetricsHistoryOpen={setMetricsHistoryOpen} />}
-        {activeTab === 'docker' && <Containers containers={containers} refresh={refresh} action={dockerAction} API_URL={API_URL} authenticated={authenticated} postLog={postLog} />}
+        {activeTab === 'docker' && <Containers containers={containers} refresh={refresh} action={dockerAction} API_URL={API_URL} authenticated={authenticated} />}
         {activeTab === 'services' && <Services API_URL={API_URL} authenticated={authenticated} />}
         {activeTab === 'storage' && <Storage disk={disk} scanDisks={scanDisks} scanningDisks={scanningDisks} />}
         {activeTab === 'network' && <NetworkView system={systemData} testConnection={testConnection} testingConnection={testingConnection} />}
@@ -642,7 +642,7 @@ function Metric({ label, value, sub, color, icon, data }: any) { return <div cla
 function PanelTitle({ title, subtitle, action }: any) { return <div className="panel-heading"><div><h2>{title}</h2><p>{subtitle}</p></div>{action}</div>; }
 function PageHeader({ eyebrow, title, description, action }: any) { return <header className="page-header"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>{action}</header>; }
 
-function Containers({ containers, refresh, action, API_URL, authenticated, postLog }: any) {
+function Containers({ containers, refresh, action, API_URL, authenticated }: any) {
   const [filterQuery, setFilterQuery] = useState('');
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [deployName, setDeployName] = useState('');
@@ -762,10 +762,27 @@ function Containers({ containers, refresh, action, API_URL, authenticated, postL
                   <td>{item.cpu_percent ?? 0}%</td>
                   <td>{byte(item.memory_usage)}</td>
                   <td className="dim">
-                    {item.ports ? Object.entries(item.ports).map(([k, v]: any) => {
-                      const hostPort = v?.[0]?.HostPort;
-                      return hostPort ? `${hostPort}→${k.split('/')[0]}` : k;
-                    }).join(', ') : '—'}
+                    {item.ports && Object.keys(item.ports).length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {Object.entries(item.ports).map(([containerPort, bindings]: any) => {
+                          const portName = containerPort.split('/')[0];
+                          if (bindings && bindings.length > 0) {
+                            return bindings.map((b: any, idx: number) => (
+                              <span key={`${containerPort}-${idx}`} className="badge success" style={{ fontSize: '9px', fontFamily: 'monospace', padding: '3px 6px' }} title="Mapped Host Port">
+                                {b.HostPort}:{portName}
+                              </span>
+                            ));
+                          }
+                          return (
+                            <span key={containerPort} className="badge neutral" style={{ fontSize: '9px', opacity: 0.6, fontFamily: 'monospace', padding: '3px 6px' }} title="Exposed Container Port Only">
+                              {portName}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--muted)' }}>—</span>
+                    )}
                   </td>
                   <td>
                     <div className="row-actions">
