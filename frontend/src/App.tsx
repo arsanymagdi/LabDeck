@@ -21,6 +21,7 @@ const navigation = [
   { id: 'network', label: 'Network', icon: Network },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
   { id: 'logs', label: 'Activity log', icon: FileText },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 
@@ -327,7 +328,7 @@ export default function App() {
       <nav>{navigation.slice(0, 4).map(item => <NavItem key={item.id} item={item} active={activeTab} select={setActiveTab} close={() => setMenuOpen(false)} />)}</nav>
       <p className="nav-label">Manage</p>
       <nav>{navigation.slice(4).map(item => <NavItem key={item.id} item={item} active={activeTab} select={setActiveTab} close={() => setMenuOpen(false)} />)}</nav>
-      <div className="sidebar-bottom"><button className="nav-item" onClick={() => setSettingsOpen(true)}><Settings size={18} /> Settings</button><button className="nav-item muted" onClick={logout}><LogOut size={18} /> Sign out</button><div className="user-chip" onClick={() => setSettingsOpen(true)} style={{ cursor: 'pointer' }}><div>AD</div><span><b>Admin</b><small>Owner</small></span><MoreHorizontal size={17} /></div></div>
+      <div className="sidebar-bottom"><button className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}><Settings size={18} /> Settings</button><button className="nav-item muted" onClick={logout}><LogOut size={18} /> Sign out</button><div className="user-chip" onClick={() => setActiveTab('settings')} style={{ cursor: 'pointer' }}><div>AD</div><span><b>Admin</b><small>Owner</small></span><MoreHorizontal size={17} /></div></div>
     </aside>
     {menuOpen && <button className="scrim" aria-label="Close menu" onClick={() => setMenuOpen(false)} />}
     <main className="workspace">
@@ -342,12 +343,13 @@ export default function App() {
       </header>
       <section className="content">
         {activeTab === 'dashboard' && <Dashboard cpu={cpu} memory={memory} disk={disk} system={systemData} running={running} total={containers.length} loading={loading} refresh={refresh} cpuHistory={cpuHistory} memHistory={memHistory} setActiveTab={setActiveTab} runAutomation={runAutomation} automationRunning={automationRunning} setMetricsHistoryOpen={setMetricsHistoryOpen} />}
-        {activeTab === 'docker' && <Containers containers={containers} refresh={refresh} action={dockerAction} />}
+        {activeTab === 'docker' && <Containers containers={containers} refresh={refresh} action={dockerAction} API_URL={API_URL} authenticated={authenticated} postLog={postLog} />}
         {activeTab === 'services' && <Services API_URL={API_URL} authenticated={authenticated} />}
         {activeTab === 'storage' && <Storage disk={disk} scanDisks={scanDisks} scanningDisks={scanningDisks} />}
         {activeTab === 'network' && <NetworkView system={systemData} testConnection={testConnection} testingConnection={testingConnection} />}
         {activeTab === 'terminal' && <TerminalView />}
         {activeTab === 'logs' && <Logs events={events} exportLogs={exportLogs} />}
+        {activeTab === 'settings' && <SettingsView serverAddress={serverAddress} setServerAddress={setServerAddress} API_URL={API_URL} authenticated={authenticated} postLog={postLog} testConnection={testConnection} scanDisks={scanDisks} />}
       </section>
     </main>
 
@@ -640,7 +642,231 @@ function Metric({ label, value, sub, color, icon, data }: any) { return <div cla
 function PanelTitle({ title, subtitle, action }: any) { return <div className="panel-heading"><div><h2>{title}</h2><p>{subtitle}</p></div>{action}</div>; }
 function PageHeader({ eyebrow, title, description, action }: any) { return <header className="page-header"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{description}</p></div>{action}</header>; }
 
-function Containers({ containers, refresh, action }: any) { return <><PageHeader eyebrow="Docker engine" title="Container fleet" description="Monitor, start, stop, and restart workloads on this server." action={<button onClick={refresh} className="outline-button"><RefreshCw size={16} /> Refresh</button>} /><div className="panel table-panel"><div className="table-tools"><div className="table-search"><Search size={16} /><input placeholder="Filter containers" /></div><button className="primary-small"><Plus size={16} /> Deploy container</button></div><div className="table-wrap"><table><thead><tr><th>Name</th><th>Status</th><th>CPU</th><th>Memory</th><th>Created</th><th /></tr></thead><tbody>{containers.length ? containers.map((item: any) => <tr key={item.id}><td><div className="container-name"><span><Boxes size={17} /></span><div><b>{item.name}</b><small>{item.id?.slice(0, 12)}</small></div></div></td><td><span className={`badge ${item.status === 'running' ? 'success' : 'neutral'}`}><i />{item.status}</span></td><td>{item.cpu_percent ?? 0}%</td><td>{byte(item.memory_usage)}</td><td className="dim">{item.created || '—'}</td><td><div className="row-actions">{item.status === 'running' ? <button onClick={() => action(item.id, 'stop')} aria-label="Stop"><Square size={14} /></button> : <button onClick={() => action(item.id, 'start')} aria-label="Start"><Play size={14} /></button>}<button onClick={() => action(item.id, 'restart')}><RefreshCw size={15} /></button><button><MoreHorizontal size={17} /></button></div></td></tr>) : <tr><td colSpan={6}><Empty title="No containers found" text="Connect Docker to see your workloads here." /></td></tr>}</tbody></table></div></div></> }
+function Containers({ containers, refresh, action, API_URL, authenticated, postLog }: any) {
+  const [filterQuery, setFilterQuery] = useState('');
+  const [deployModalOpen, setDeployModalOpen] = useState(false);
+  const [deployName, setDeployName] = useState('');
+  const [deployImage, setDeployImage] = useState('');
+  const [deployPort, setDeployPort] = useState('');
+  const [deploying, setDeploying] = useState(false);
+
+  const [activeLogsContainer, setActiveLogsContainer] = useState<any>(null);
+  const [containerLogs, setContainerLogs] = useState('');
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  const handleDeploy = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!deployName || !deployImage) {
+      alert("Name and image are required!");
+      return;
+    }
+    setDeploying(true);
+    try {
+      const res = await fetch(`${API_URL}/docker/deploy`, {
+        method: 'POST',
+        headers: authenticated({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ name: deployName, image: deployImage, port_bindings: deployPort })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert(data.message);
+        setDeployModalOpen(false);
+        setDeployName('');
+        setDeployImage('');
+        setDeployPort('');
+        refresh();
+      }
+    } catch {
+      alert("Error deploying container.");
+    } finally {
+      setDeploying(false);
+    }
+  };
+
+  const handleFetchLogs = async (container: any) => {
+    setActiveLogsContainer(container);
+    setLoadingLogs(true);
+    setContainerLogs('');
+    try {
+      const res = await fetch(`${API_URL}/docker/${container.id}/logs`, { headers: authenticated() });
+      if (res.ok) {
+        const data = await res.json();
+        setContainerLogs(data.logs || 'No log output found.');
+      }
+    } catch {
+      setContainerLogs('Failed to load container logs.');
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  const handleDeleteContainer = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to permanently delete container ${name}?`)) return;
+    try {
+      const res = await fetch(`${API_URL}/docker/${id}`, {
+        method: 'DELETE',
+        headers: authenticated()
+      });
+      if (res.ok) {
+        alert(`Container ${name} successfully removed.`);
+        refresh();
+      }
+    } catch {
+      alert("Failed to remove container.");
+    }
+  };
+
+  const filteredContainers = containers.filter((c: any) => 
+    c.name.toLowerCase().includes(filterQuery.toLowerCase()) || 
+    (c.image && c.image.toLowerCase().includes(filterQuery.toLowerCase()))
+  );
+
+  return (
+    <>
+      <PageHeader eyebrow="Docker engine" title="Container fleet" description="Monitor, start, stop, and restart workloads on this server." action={<button onClick={refresh} className="outline-button"><RefreshCw size={16} /> Refresh</button>} />
+      <div className="panel table-panel">
+        <div className="table-tools">
+          <div className="table-search">
+            <Search size={16} />
+            <input value={filterQuery} onChange={e => setFilterQuery(e.target.value)} placeholder="Filter containers by name or image..." />
+          </div>
+          <button className="primary-small" onClick={() => setDeployModalOpen(true)}><Plus size={16} /> Deploy container</button>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>CPU</th>
+                <th>Memory</th>
+                <th>Ports</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredContainers.length ? filteredContainers.map((item: any) => (
+                <tr key={item.id}>
+                  <td>
+                    <div className="container-name">
+                      <span><Boxes size={17} /></span>
+                      <div>
+                        <b>{item.name}</b>
+                        <small>{item.id?.slice(0, 12)}</small>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`badge ${item.status === 'running' ? 'success' : 'neutral'}`}><i />{item.status}</span>
+                  </td>
+                  <td>{item.cpu_percent ?? 0}%</td>
+                  <td>{byte(item.memory_usage)}</td>
+                  <td className="dim">
+                    {item.ports ? Object.entries(item.ports).map(([k, v]: any) => {
+                      const hostPort = v?.[0]?.HostPort;
+                      return hostPort ? `${hostPort}→${k.split('/')[0]}` : k;
+                    }).join(', ') : '—'}
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      {item.status === 'running' ? (
+                        <button onClick={() => action(item.id, 'stop')} aria-label="Stop"><Square size={14} /></button>
+                      ) : (
+                        <button onClick={() => action(item.id, 'start')} aria-label="Start"><Play size={14} /></button>
+                      )}
+                      <button onClick={() => action(item.id, 'restart')} aria-label="Restart"><RefreshCw size={15} /></button>
+                      <button onClick={() => handleFetchLogs(item)} title="View Logs"><FileText size={14} /></button>
+                      <button onClick={() => handleDeleteContainer(item.id, item.name)} style={{ borderColor: '#ee907f', color: '#ee907f' }} title="Delete Container"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={6}><Empty title="No containers found" text="Filter query returned empty or Docker has no workloads." /></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Deploy Container Modal */}
+      {deployModalOpen && (
+        <div className="modal-backdrop" onClick={() => setDeployModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Plus size={18} /> Deploy Container</h2>
+              <button className="modal-close" onClick={() => setDeployModalOpen(false)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleDeploy}>
+              <div className="modal-body" style={{ display: 'grid', gap: '12px' }}>
+                <label style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800, textTransform: 'uppercase' }}>
+                  Container Name
+                  <div className="input-wrap" style={{ marginTop: '5px' }}>
+                    <input value={deployName} onChange={e => setDeployName(e.target.value)} placeholder="e.g. webserver" required />
+                  </div>
+                </label>
+                <label style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800, textTransform: 'uppercase' }}>
+                  Docker Image
+                  <div className="input-wrap" style={{ marginTop: '5px' }}>
+                    <input value={deployImage} onChange={e => setDeployImage(e.target.value)} placeholder="e.g. nginx:alpine" required />
+                  </div>
+                </label>
+                <label style={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 800, textTransform: 'uppercase' }}>
+                  Port Mapping (Host:Container - Optional)
+                  <div className="input-wrap" style={{ marginTop: '5px' }}>
+                    <input value={deployPort} onChange={e => setDeployPort(e.target.value)} placeholder="e.g. 8080:80" />
+                  </div>
+                </label>
+              </div>
+              <div className="modal-footer">
+                <button type="submit" className="primary-small" disabled={deploying}>
+                  {deploying ? 'Deploying...' : 'Deploy Container'}
+                </button>
+                <button type="button" className="outline-button" onClick={() => setDeployModalOpen(false)}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Logs Modal */}
+      {activeLogsContainer && (
+        <div className="modal-backdrop" onClick={() => setActiveLogsContainer(null)}>
+          <div className="modal-content" style={{ width: 'min(640px, 100%)' }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><FileText size={18} /> Logs: {activeLogsContainer.name}</h2>
+              <button className="modal-close" onClick={() => setActiveLogsContainer(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              {loadingLogs ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--muted)' }}>Fetching logs...</div>
+              ) : (
+                <pre style={{
+                  background: '#0e0f11',
+                  color: '#bab9c0',
+                  padding: '16px',
+                  borderRadius: '8px',
+                  fontFamily: 'DM Mono, monospace',
+                  fontSize: '11px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  border: '1px solid #2a2b30'
+                }}>
+                  {containerLogs}
+                </pre>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="outline-button" onClick={() => setActiveLogsContainer(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 function Services({ API_URL, authenticated }: any) {
   const [services, setServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -882,3 +1108,226 @@ function TerminalView() {
 }
 function Logs({ events, exportLogs }: any) { return <><PageHeader eyebrow="Audit trail" title="Activity log" description="A chronological view of actions and infrastructure events." action={<button onClick={exportLogs} className="outline-button"><FileText size={16} /> Export</button>} /><div className="panel log-list">{events.map((event: string, index: number) => <div key={`${event}${index}`}><span className="log-icon"><Clock3 size={17} /></span><p><b>{event}</b><small>{index === 0 ? 'Just now' : `${index * 12} minutes ago`} · System</small></p><span className="badge success">Info</span></div>)}</div></> }
 function Empty({ title, text }: any) { return <div className="empty"><Boxes size={28} /><b>{title}</b><span>{text}</span></div>; }
+
+function SettingsView({ serverAddress, setServerAddress, API_URL, authenticated, postLog, testConnection, scanDisks }: any) {
+  const [addressInput, setAddressInput] = useState(serverAddress);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [themeMode, setThemeMode] = useState(localStorage.getItem('theme_mode') || 'dark');
+  const [autoRefreshInterval, setAutoRefreshInterval] = useState(localStorage.getItem('refresh_interval') || '10');
+
+  const handleSaveConnection = (e: FormEvent) => {
+    e.preventDefault();
+    setServerAddress(addressInput);
+    localStorage.setItem('server_address', addressInput);
+    postLog(`Server endpoint address updated to: ${addressInput || 'default (origin)'}`);
+    alert('Server connection endpoint updated.');
+  };
+
+  const handleChangePassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_URL}/auth/change-password`, {
+        method: 'POST',
+        headers: authenticated({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+      });
+      if (response.ok) {
+        setPasswordSuccess('Password successfully updated!');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+        postLog('Administrator security credentials updated.');
+      } else {
+        const data = await response.json();
+        setPasswordError(data.detail || 'Failed to change password. Please check your current password.');
+      }
+    } catch {
+      setPasswordError('Error reaching security control endpoint.');
+    }
+  };
+
+  const handleToggleTheme = (mode: string) => {
+    setThemeMode(mode);
+    localStorage.setItem('theme_mode', mode);
+    postLog(`Appearance preferences changed to: ${mode}`);
+  };
+
+  const handleRefreshIntervalChange = (val: string) => {
+    setAutoRefreshInterval(val);
+    localStorage.setItem('refresh_interval', val);
+    postLog(`Auto telemetry polling interval set to: ${val}s`);
+  };
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Preferences & security"
+        title="System Settings"
+        description="Configure your control center endpoints, security credentials, and preferences."
+      />
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', alignItems: 'start' }}>
+        
+        {/* Connection Settings panel */}
+        <div className="panel">
+          <PanelTitle title="Server Connection" subtitle="Manage API telemetry endpoints" />
+          <form onSubmit={handleSaveConnection} style={{ display: 'grid', gap: '14px', marginTop: '12px' }}>
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>API Server URL</span>
+              <div className="input-wrap" style={{ marginTop: '6px' }}>
+                <Server size={16} />
+                <input 
+                  value={addressInput} 
+                  onChange={e => setAddressInput(e.target.value)} 
+                  placeholder="e.g. http://192.168.1.100:8080 (Leave empty for default host)" 
+                />
+              </div>
+              <span style={{ fontSize: '9px', color: 'var(--muted)', marginTop: '4px', display: 'block' }}>
+                Changes will take effect instantly for telemetry polling.
+              </span>
+            </label>
+            <button className="primary-small" type="submit" style={{ justifySelf: 'start' }}>
+              Save Endpoint
+            </button>
+          </form>
+        </div>
+
+        {/* Security Settings panel */}
+        <div className="panel">
+          <PanelTitle title="Security & Authentication" subtitle="Update control center password" />
+          <form onSubmit={handleChangePassword} style={{ display: 'grid', gap: '14px', marginTop: '12px' }}>
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Current Password</span>
+              <div className="input-wrap" style={{ marginTop: '6px' }}>
+                <KeyRound size={16} />
+                <input 
+                  type="password"
+                  value={currentPassword} 
+                  onChange={e => setCurrentPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  required
+                />
+              </div>
+            </label>
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>New Password</span>
+              <div className="input-wrap" style={{ marginTop: '6px' }}>
+                <KeyRound size={16} />
+                <input 
+                  type="password"
+                  value={newPassword} 
+                  onChange={e => setNewPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  required
+                />
+              </div>
+            </label>
+            <label style={{ display: 'block' }}>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Confirm New Password</span>
+              <div className="input-wrap" style={{ marginTop: '6px' }}>
+                <KeyRound size={16} />
+                <input 
+                  type="password"
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  placeholder="••••••••" 
+                  required
+                />
+              </div>
+            </label>
+            {passwordError && <p className="form-error" style={{ fontSize: '11px', color: '#ee907f' }}>{passwordError}</p>}
+            {passwordSuccess && <p style={{ fontSize: '11px', color: 'var(--green)', margin: 0 }}>{passwordSuccess}</p>}
+            <button className="primary-small" type="submit" style={{ justifySelf: 'start' }}>
+              Update Password
+            </button>
+          </form>
+        </div>
+
+        {/* Display / UI preferences */}
+        <div className="panel">
+          <PanelTitle title="General Preferences" subtitle="Customize display and interface behavior" />
+          <div style={{ display: 'grid', gap: '16px', marginTop: '12px' }}>
+            <div>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                Appearance
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  type="button"
+                  className="outline-button" 
+                  style={{ flex: 1, borderColor: themeMode === 'dark' ? 'var(--violet)' : '#383940', color: themeMode === 'dark' ? 'white' : 'var(--muted)' }}
+                  onClick={() => handleToggleTheme('dark')}
+                >
+                  Dark Mode
+                </button>
+                <button 
+                  type="button"
+                  className="outline-button" 
+                  style={{ flex: 1, borderColor: themeMode === 'light' ? 'var(--violet)' : '#383940', color: themeMode === 'light' ? 'white' : 'var(--muted)' }}
+                  onClick={() => handleToggleTheme('light')}
+                >
+                  Light Theme
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <span style={{ fontSize: '10px', fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>
+                Telemetry Auto-Refresh Rate
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {['5', '10', '30', '60'].map(seconds => (
+                  <button 
+                    key={seconds}
+                    type="button"
+                    className="outline-button" 
+                    style={{ flex: 1, padding: '6px', fontSize: '10px', borderColor: autoRefreshInterval === seconds ? 'var(--violet)' : '#383940' }}
+                    onClick={() => handleRefreshIntervalChange(seconds)}
+                  >
+                    {seconds}s
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* System info & diagnostic control */}
+        <div className="panel">
+          <PanelTitle title="Diagnostics & Maintenance" subtitle="Troubleshoot server hardware and network" />
+          <div style={{ display: 'grid', gap: '12px', marginTop: '12px' }}>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button type="button" className="outline-button" style={{ flex: 1 }} onClick={testConnection}>
+                <Network size={14} /> Ping Gateways
+              </button>
+              <button type="button" className="outline-button" style={{ flex: 1 }} onClick={scanDisks}>
+                <HardDrive size={14} /> Scan Disks
+              </button>
+            </div>
+            <div style={{ borderTop: '1px solid var(--line)', paddingTop: '12px', marginTop: '4px' }}>
+              <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 600 }}>HomelabOS Platform Info</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '10px', color: 'var(--muted)', marginTop: '8px' }}>
+                <div>Control Plane: <b>v1.4.2-stable</b></div>
+                <div>Docker Engine: <b>API 1.45</b></div>
+                <div>Telemetry Daemon: <b>Python 3.11</b></div>
+                <div>SQLite Database: <b>Enabled</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </>
+  );
+}
+

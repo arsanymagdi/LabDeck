@@ -62,11 +62,20 @@ def list_containers(current_user: str = Depends(get_current_user)):
                     # Quick check from container stats (no stream, single read)
                     stats = c.stats(stream=False)
                     # CPU calculation
-                    cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
-                    system_delta = stats['cpu_stats']['system_cpu_usage'] - stats['precpu_stats']['system_cpu_usage']
-                    if system_delta > 0:
-                        cpu = round((cpu_delta / system_delta) * len(stats['cpu_stats']['cpu_usage']['percpu_usage']) * 100.0, 2)
-                    ram = stats['memory_stats'].get('usage', 0)
+                    cpu_stats = stats.get('cpu_stats', {})
+                    precpu_stats = stats.get('precpu_stats', {})
+                    
+                    cpu_usage = cpu_stats.get('cpu_usage', {})
+                    precpu_usage = precpu_stats.get('cpu_usage', {})
+                    
+                    cpu_delta = cpu_usage.get('total_usage', 0) - precpu_usage.get('total_usage', 0)
+                    system_delta = cpu_stats.get('system_cpu_usage', 0) - precpu_stats.get('system_cpu_usage', 0)
+                    
+                    if system_delta > 0 and cpu_delta > 0:
+                        online_cpus = cpu_stats.get('online_cpus', len(cpu_usage.get('percpu_usage', [])) or 1)
+                        cpu = round((cpu_delta / system_delta) * online_cpus * 100.0, 2)
+                    
+                    ram = stats.get('memory_stats', {}).get('usage', 0)
                 except Exception:
                     pass
 
@@ -116,6 +125,60 @@ def container_action(container_id: str, action: str, current_user: str = Depends
         raise HTTPException(status_code=500, detail=str(e))
 
 
+from pydantic import BaseModel
+
+class DeployRequest(BaseModel):
+    name: str
+    image: str
+    port_bindings: str = ""
+
+@router.post("/deploy")
+def deploy_container(request: DeployRequest, current_user: str = Depends(get_current_user)):
+    client = get_docker_client()
+    if not client:
+        msg = f"Mock deployed container: {request.name} ({request.image})"
+        save_log(msg)
+        cleanup_logs()
+        return {"status": "success", "message": msg}
+    try:
+        ports = {}
+        if request.port_bindings:
+            parts = request.port_bindings.split(":")
+            if len(parts) == 2:
+                ports[f"{parts[1]}/tcp"] = int(parts[0])
+        client.containers.run(
+            request.image,
+            name=request.name,
+            ports=ports,
+            detach=True
+        )
+        msg = f"Deployed container {request.name} ({request.image}) successfully."
+        save_log(msg)
+        cleanup_logs()
+        return {"status": "success", "message": msg}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/{container_id}")
+def delete_container(container_id: str, current_user: str = Depends(get_current_user)):
+    if container_id.startswith("mock-"):
+        msg = f"Mock container {container_id} removed successfully."
+        save_log(msg)
+        cleanup_logs()
+        return {"status": "success", "message": msg}
+    client = get_docker_client()
+    if not client:
+        raise HTTPException(status_code=503, detail="Docker service unavailable")
+    try:
+        container = client.containers.get(container_id)
+        container.remove(force=True)
+        msg = f"Container {container.name or container_id} removed successfully."
+        save_log(msg)
+        cleanup_logs()
+        return {"status": "success", "message": msg}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/{container_id}/logs")
 def get_container_logs(container_id: str, tail: int = 100, current_user: str = Depends(get_current_user)):
     if container_id.startswith("mock-"):
@@ -131,3 +194,4 @@ def get_container_logs(container_id: str, tail: int = 100, current_user: str = D
         return {"logs": logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

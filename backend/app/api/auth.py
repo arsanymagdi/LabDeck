@@ -45,6 +45,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.post("/change-password")
+def change_password(payload: ChangePasswordRequest, current_user: str = Depends(get_current_user)):
+    if not verify_password(payload.current_password, settings.DASHBOARD_PASSWORD):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password"
+        )
+    settings.DASHBOARD_PASSWORD = payload.new_password
+    return {"status": "success", "message": "Password changed successfully"}
+
 @router.get("/me")
 def read_users_me(current_user: str = Depends(get_current_user)):
     return {"username": current_user}

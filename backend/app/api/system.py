@@ -171,7 +171,14 @@ from app.core.metrics_db import get_history
 def get_metrics_history(current_user: str = Depends(get_current_user)):
     return get_history()
 
-from app.core.metrics_db import get_activity_logs, save_log, cleanup_logs
+from app.core.metrics_db import get_activity_logs, save_log, cleanup_logs, clear_database
+
+@router.post("/cleanup-db")
+def cleanup_database(current_user: str = Depends(get_current_user)):
+    clear_database()
+    save_log("Database tables purged by Admin settings command.")
+    return {"message": "Database tables purged successfully."}
+
 from pydantic import BaseModel
 
 class LogRequest(BaseModel):

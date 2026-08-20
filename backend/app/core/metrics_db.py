@@ -133,5 +133,15 @@ def get_activity_logs() -> list[dict]:
     except Exception as e:
         print(f"Error fetching activity logs: {e}")
         return []
+def clear_database():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM system_metrics")
+        cursor.execute("DELETE FROM activity_logs")
+        conn.commit()
+    except Exception as e:
+        print(f"Error clearing database: {e}")
     finally:
         conn.close()
+
