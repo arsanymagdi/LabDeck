@@ -22,8 +22,7 @@ services:
   ttyd:
     image: tsl0922/ttyd:latest
     restart: unless-stopped
-    command: ["ttyd", "-W", "bash"]
-    profiles: ["terminal"]
+    command: ["ttyd", "-W", "-b", "/ttyd", "bash"]
     networks: [homelabos]
 networks:
   homelabos:

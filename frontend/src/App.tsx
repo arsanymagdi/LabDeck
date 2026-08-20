@@ -189,6 +189,80 @@ function Containers({ containers, refresh, action }: any) { return <><PageHeader
 function Services() { return <><PageHeader eyebrow="Host services" title="Services" description="Applications exposed by your server and local network." action={<button className="primary-small"><Plus size={16} /> Add service</button>} /><div className="service-grid">{serviceRows.map(([name, description, port]) => <div className="service-card" key={name}><div className="service-card-top"><span className="service-logo"><Server size={20} /></span><span className="badge success"><i /> Healthy</span></div><h2>{name}</h2><p>{description}</p><div><span>Port</span><code>:{port}</code><button>Open <ArrowUpRight size={14} /></button></div></div>)}</div></> }
 function Storage({ disk }: any) { const usage = percent(disk.percent); return <><PageHeader eyebrow="Storage management" title="Storage at a glance" description="Capacity, device health, and filesystem status." action={<button className="outline-button"><HardDrive size={16} /> Scan disks</button>} /><div className="storage-layout"><div className="panel storage-hero"><span className="storage-icon"><HardDrive size={25} /></span><h2>Primary volume</h2><p>{disk.mountpoint || '/'} · ext4 filesystem</p><div className="storage-number"><b>{byte(disk.used)}</b><span>used of {byte(disk.total)}</span></div><div className="bar"><i style={{ width: `${usage}%` }} /></div><div className="storage-foot"><span>{usage}% in use</span><span>{byte((disk.total || 0) - (disk.used || 0))} available</span></div></div><div className="panel disk-health"><PanelTitle title="Disk health" subtitle="SMART status & device details" /><div className="health-row"><span><i className="good-dot" /> SMART status</span><b>Passed</b></div><div className="health-row"><span>Temperature</span><b>34°C</b></div><div className="health-row"><span>Estimated life</span><b>98%</b></div><div className="health-row"><span>Last check</span><b>Today, 10:42</b></div></div></div></> }
 function NetworkView({ system }: any) { return <><PageHeader eyebrow="Connectivity" title="Network overview" description="Connection health and traffic across your primary interface." action={<button className="outline-button"><RefreshCw size={16} /> Test connection</button>} /><div className="network-cards"><Metric label="Download" value={byte(system?.network?.bytes_recv)} sub="Received since boot" color="#5c8dff" icon={<ArrowDownRight size={18} />} data={58} /><Metric label="Upload" value={byte(system?.network?.bytes_sent)} sub="Sent since boot" color="#a884ff" icon={<ArrowUpRight size={18} />} /><div className="metric-card"><div className="metric-label"><span>Connection</span><i><Network size={18} /></i></div><div className="connection"><span className="status"><i /> Connected</span><b>eth0</b></div><p>Private network · protected</p></div></div><div className="panel interfaces"><PanelTitle title="Network interfaces" subtitle="Configured connections on this host" /><div className="interface-row"><span className="network-icon"><Network size={19} /></span><span><b>Ethernet · eth0</b><small>192.168.1.4 · DHCP</small></span><span className="status"><i /> Connected</span><ChevronRight size={18} /></div></div></> }
-function TerminalView() { return <><PageHeader eyebrow="Secure access" title="Terminal" description="Launch a browser-based terminal session to this host." /><div className="terminal-card"><div className="terminal-window"><div className="terminal-bar"><i /><i /><i /><span>admin@homelab-node: ~</span></div><code><span>admin@homelab-node</span>:<b>~</b>$ <em>_</em></code></div><div><span className="action-icon violet"><Terminal size={19} /></span><h2>A secure shell, one click away.</h2><p>Open a direct terminal session with your current authenticated identity.</p><button className="primary-button">Launch terminal <ArrowUpRight size={17} /></button></div></div></> }
+function TerminalView() {
+  const [isActive, setIsActive] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
+  if (isActive) {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Secure access"
+          title="Terminal Session"
+          description="Interactive terminal connection to your homelab container."
+          action={
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setIsFullScreen(!isFullScreen)} className="outline-button">
+                {isFullScreen ? 'Exit Full Screen' : 'Full Screen'}
+              </button>
+              <button onClick={() => setIsActive(false)} className="outline-button" style={{ borderColor: '#ee907f', color: '#ee907f' }}>
+                Disconnect
+              </button>
+            </div>
+          }
+        />
+        <div className={isFullScreen ? 'terminal-fullscreen' : 'terminal-window-container'}>
+          <div className="terminal-window-active">
+            <div className="terminal-bar">
+              <i />
+              <i />
+              <i />
+              <span>admin@homelab-node: ~ (active)</span>
+            </div>
+            <iframe
+              src="/ttyd/"
+              title="Terminal"
+              className="terminal-iframe"
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Secure access"
+        title="Terminal"
+        description="Launch a browser-based terminal session to this host."
+      />
+      <div className="terminal-card">
+        <div className="terminal-window">
+          <div className="terminal-bar">
+            <i />
+            <i />
+            <i />
+            <span>admin@homelab-node: ~</span>
+          </div>
+          <code>
+            <span>admin@homelab-node</span>:<b>~</b>$ <em>_</em>
+          </code>
+        </div>
+        <div>
+          <span className="action-icon violet">
+            <Terminal size={19} />
+          </span>
+          <h2>A secure shell, one click away.</h2>
+          <p>Open a direct terminal session with your current authenticated identity.</p>
+          <button onClick={() => setIsActive(true)} className="primary-button">
+            Launch terminal <ArrowUpRight size={17} />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
 function Logs({ events }: any) { return <><PageHeader eyebrow="Audit trail" title="Activity log" description="A chronological view of actions and infrastructure events." action={<button className="outline-button"><FileText size={16} /> Export</button>} /><div className="panel log-list">{events.map((event: string, index: number) => <div key={`${event}${index}`}><span className="log-icon"><Clock3 size={17} /></span><p><b>{event}</b><small>{index === 0 ? 'Just now' : `${index * 12} minutes ago`} · System</small></p><span className="badge success">Info</span></div>)}</div></> }
 function Empty({ title, text }: any) { return <div className="empty"><Boxes size={28} /><b>{title}</b><span>{text}</span></div>; }
