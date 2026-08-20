@@ -20,7 +20,7 @@ services:
       - "${HOMELABOS_PORT:-8080}:80"
     networks: [homelabos]
   ttyd:
-    image: tsl0922/ttyd:latest
+    build: ./terminal
     restart: unless-stopped
     command: ["ttyd", "-W", "-b", "/ttyd", "nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "login", "-f", "root"]
     privileged: true
