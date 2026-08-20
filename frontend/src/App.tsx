@@ -495,7 +495,7 @@ export default function App() {
             <button className="modal-close" onClick={() => setMetricsHistoryOpen(false)}><X size={18} /></button>
           </div>
           <div className="modal-body">
-            <div style={{ display: 'flex', justifycontent: 'space-between', alignitems: 'center', marginbottom: '16px', gap: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '10px' }}>
               <span>Historical Records ({historyDetails.length})</span>
               <button className="primary-small" onClick={() => {
                 const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(historyDetails, null, 2));
